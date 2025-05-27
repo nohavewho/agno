@@ -61,9 +61,6 @@ class RunResponseExtraData:
         add_messages = data.pop("add_messages", None)
         add_messages = [Message.model_validate(message) for message in add_messages] if add_messages else None
 
-        history = data.pop("history", None)
-        history = [Message.model_validate(message) for message in history] if history else None
-
         reasoning_steps = data.pop("reasoning_steps", None)
         reasoning_steps = [ReasoningStep.model_validate(step) for step in reasoning_steps] if reasoning_steps else None
 
@@ -133,7 +130,7 @@ class RunResponse:
             k: v
             for k, v in asdict(self).items()
             if v is not None
-            and k not in ["messages", "extra_data", "images", "videos", "audio", "response_audio", "citations"]
+            and k not in ["messages", "tools", "extra_data", "images", "videos", "audio", "response_audio", "citations"]
         }
         if self.messages is not None:
             _dict["messages"] = [m.to_dict() for m in self.messages]
@@ -183,7 +180,12 @@ class RunResponse:
             _dict["content"] = self.content.model_dump(exclude_none=True)
 
         if self.tools is not None:
-            _dict["tools"] = [tool.to_dict() for tool in self.tools]
+            _dict["tools"] = []
+            for tool in self.tools:
+                if isinstance(tool, ToolExecution):
+                    _dict["tools"].append(tool.to_dict())
+                else:
+                    _dict["tools"].append(tool)
 
         return _dict
 
@@ -203,7 +205,10 @@ class RunResponse:
         messages = data.pop("messages", None)
         messages = [Message.model_validate(message) for message in messages] if messages else None
 
-        return cls(messages=messages, **data)
+        tools = data.pop("tools", None)
+        tools = [ToolExecution.from_dict(tool) for tool in tools] if tools else None
+
+        return cls(messages=messages, tools=tools, **data)
 
     def get_content_as_string(self, **kwargs) -> str:
         import json
