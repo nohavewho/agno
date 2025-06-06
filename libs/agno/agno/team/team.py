@@ -107,6 +107,9 @@ class Team:
     session_name: Optional[str] = None
     # Session state (stored in the database to persist across runs)
     session_state: Optional[Dict[str, Any]] = None
+
+    # Team session state (shared between team leaders and team members)
+    team_session_state: Optional[Dict[str, Any]] = None
     # If True, add the session state variables in the user and system messages
     add_state_in_messages: bool = False
 
@@ -124,6 +127,8 @@ class Team:
     # If True, add the current datetime to the instructions to give the team a sense of time
     # This allows for relative times like "tomorrow" to be used in the prompt
     add_datetime_to_instructions: bool = False
+    # If True, add the current location to the instructions to give the team a sense of location
+    add_location_to_instructions: bool = False
     # If True, add the tools available to team members to the system message
     add_member_tools_to_system_message: bool = True
 
@@ -143,12 +148,15 @@ class Team:
     knowledge_filters: Optional[Dict[str, Any]] = None
     # Let the agent choose the knowledge filters
     enable_agentic_knowledge_filters: Optional[bool] = False
+
+    # If True, add references to the user prompt
+    add_references: bool = False
     # Retrieval function to get references
     # This function, if provided, is used instead of the default search_knowledge function
     # Signature:
     # def retriever(team: Team, query: str, num_documents: Optional[int], **kwargs) -> Optional[list[dict]]:
     #     ...
-    retriever: Optional[Callable[..., Optional[List[Dict]]]] = None
+    retriever: Optional[Callable[..., Optional[List[Union[Dict, str]]]]] = None
     references_format: Literal["json", "yaml"] = "json"
 
     # --- Tools ---
@@ -206,8 +214,10 @@ class Team:
     add_session_summary_references: Optional[bool] = None
 
     # --- Team History ---
-    # If True, enable the team history
+    # If True, enable the team history (Deprecated in favor of add_history_to_messages)
     enable_team_history: bool = False
+    # add_history_to_messages=true adds messages from the chat history to the messages list sent to the Model.
+    add_history_to_messages: bool = False
     # Deprecated in favor of num_history_runs: Number of interactions from history
     num_of_interactions_from_history: Optional[int] = None
     # Number of historical runs to include in the messages
@@ -247,6 +257,7 @@ class Team:
         session_id: Optional[str] = None,
         session_name: Optional[str] = None,
         session_state: Optional[Dict[str, Any]] = None,
+        team_session_state: Optional[Dict[str, Any]] = None,
         add_state_in_messages: bool = False,
         description: Optional[str] = None,
         instructions: Optional[Union[str, List[str], Callable]] = None,
@@ -255,13 +266,15 @@ class Team:
         success_criteria: Optional[str] = None,
         markdown: bool = False,
         add_datetime_to_instructions: bool = False,
+        add_location_to_instructions: bool = False,
         add_member_tools_to_system_message: bool = True,
         context: Optional[Dict[str, Any]] = None,
         add_context: bool = False,
         knowledge: Optional[AgentKnowledge] = None,
         knowledge_filters: Optional[Dict[str, Any]] = None,
+        add_references: bool = False,
         enable_agentic_knowledge_filters: Optional[bool] = False,
-        retriever: Optional[Callable[..., Optional[List[Dict]]]] = None,
+        retriever: Optional[Callable[..., Optional[List[Union[Dict, str]]]]] = None,
         references_format: Literal["json", "yaml"] = "json",
         enable_agentic_context: bool = False,
         share_member_interactions: bool = False,
@@ -283,6 +296,7 @@ class Team:
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
         enable_team_history: bool = False,
+        add_history_to_messages: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
         storage: Optional[Storage] = None,
@@ -309,6 +323,7 @@ class Team:
         self.session_id = session_id
         self.session_name = session_name
         self.session_state = session_state
+        self.team_session_state = team_session_state
         self.add_state_in_messages = add_state_in_messages
 
         self.description = description
@@ -317,6 +332,7 @@ class Team:
         self.additional_context = additional_context
         self.markdown = markdown
         self.add_datetime_to_instructions = add_datetime_to_instructions
+        self.add_location_to_instructions = add_location_to_instructions
         self.add_member_tools_to_system_message = add_member_tools_to_system_message
         self.success_criteria = success_criteria
 
@@ -326,6 +342,7 @@ class Team:
         self.knowledge = knowledge
         self.knowledge_filters = knowledge_filters
         self.enable_agentic_knowledge_filters = enable_agentic_knowledge_filters
+        self.add_references = add_references
         self.retriever = retriever
         self.references_format = references_format
 
@@ -353,6 +370,7 @@ class Team:
         self.add_session_summary_references = add_session_summary_references
 
         self.enable_team_history = enable_team_history
+        self.add_history_to_messages = add_history_to_messages
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
 
@@ -439,17 +457,11 @@ class Team:
             member.team_session_id = session_id
 
         # Set the team session state on members
-        if self.session_state is not None:
-            if isinstance(member, Agent):
-                if member.team_session_state is None:
-                    member.team_session_state = self.session_state
-                else:
-                    merge_dictionaries(member.team_session_state, self.session_state)
-            elif isinstance(member, Team):
-                if member.session_state is None:
-                    member.session_state = self.session_state
-                else:
-                    merge_dictionaries(member.session_state, self.session_state)
+        if self.team_session_state is not None:
+            if member.team_session_state is None:
+                member.team_session_state = self.team_session_state
+            else:
+                merge_dictionaries(member.team_session_state, self.team_session_state)
 
         if isinstance(member, Agent):
             member.team_id = self.team_id
@@ -488,6 +500,23 @@ class Team:
 
         if self.num_of_interactions_from_history is not None:
             self.num_history_runs = self.num_of_interactions_from_history
+
+    def _reset_session_state(self) -> None:
+        self.session_name = None
+        self.session_state = None
+        self.team_session_state = None
+        self.session_metrics = None
+        self.images = None
+        self.videos = None
+        self.audio = None
+        self.files = None
+        self.team_session = None
+
+    def _reset_run_state(self) -> None:
+        self.run_id = None
+        self.run_input = None
+        self.run_messages = None
+        self.run_response = None
 
     def initialize_team(self, session_id: Optional[str] = None) -> None:
         self._set_defaults()
@@ -570,6 +599,12 @@ class Team:
         **kwargs: Any,
     ) -> Union[TeamRunResponse, Iterator[TeamRunResponse]]:
         """Run the Team and return the response."""
+
+        self._reset_run_state()
+
+        if session_id is not None:
+            # Reset session state if a session_id is provided. Session name and session state will be loaded from storage.
+            self._reset_session_state()
 
         retries = retries or 3
         if retries < 1:
@@ -705,7 +740,9 @@ class Team:
                         )
 
             if self.mode == "route":
-                user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files)
+                user_message = self._get_user_message(
+                    message, audio=audio, images=images, videos=videos, files=files, knowledge_filters=effective_filters
+                )
                 forward_task_func: Function = self.get_forward_task_function(
                     message=user_message,
                     session_id=session_id,
@@ -776,6 +813,7 @@ class Team:
                         images=images,
                         videos=videos,
                         files=files,
+                        knowledge_filters=effective_filters,
                         **kwargs,
                     )
                 else:
@@ -787,6 +825,7 @@ class Team:
                         images=images,
                         videos=videos,
                         files=files,
+                        knowledge_filters=effective_filters,
                         **kwargs,
                     )
                 self.run_messages = run_messages
@@ -1047,6 +1086,12 @@ class Team:
     ) -> Union[TeamRunResponse, AsyncIterator[TeamRunResponse]]:
         """Run the Team asynchronously and return the response."""
 
+        self._reset_run_state()
+
+        if session_id is not None:
+            # Reset session state if a session_id is provided. Session name and session state will be loaded from storage.
+            self._reset_session_state()
+
         retries = retries or 3
         if retries < 1:
             raise ValueError("Retries must be at least 1")
@@ -1162,7 +1207,9 @@ class Team:
                         )
 
             if self.mode == "route":
-                user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files)
+                user_message = self._get_user_message(
+                    message, audio=audio, images=images, videos=videos, files=files, knowledge_filters=effective_filters
+                )
                 forward_task_func: Function = self.get_forward_task_function(
                     message=user_message,
                     session_id=session_id,
@@ -1231,6 +1278,7 @@ class Team:
                         images=images,
                         videos=videos,
                         files=files,
+                        knowledge_filters=effective_filters,
                         **kwargs,
                     )
                 else:
@@ -1242,6 +1290,7 @@ class Team:
                         images=images,
                         videos=videos,
                         files=files,
+                        knowledge_filters=effective_filters,
                         **kwargs,
                     )
 
@@ -1912,38 +1961,69 @@ class Team:
 
     def _initialize_session_state(self, user_id: Optional[str] = None, session_id: Optional[str] = None) -> None:
         self.session_state = self.session_state or {}
+
         if user_id is not None:
             self.session_state["current_user_id"] = user_id
+            if self.team_session_state is not None:
+                self.team_session_state["current_user_id"] = user_id
+
         if session_id is not None:
             self.session_state["current_session_id"] = session_id
+            if self.team_session_state is not None:
+                self.team_session_state["current_session_id"] = session_id
 
     def _make_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
     ) -> None:
-        self.memory = cast(Memory, self.memory)
-        user_message_str = (
-            run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
-        )
-        if self.enable_user_memories and user_message_str is not None and user_message_str:
-            self.memory.create_user_memories(message=user_message_str, user_id=user_id)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # Update the session summary if needed
-        if self.enable_session_summaries:
-            self.memory.create_session_summary(session_id=session_id, user_id=user_id)
+        self.memory = cast(Memory, self.memory)
+
+        # Create a thread pool with a reasonable number of workers
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = []
+            user_message_str = (
+                run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
+            )
+            if self.enable_user_memories and user_message_str is not None and user_message_str:
+                futures.append(
+                    executor.submit(self.memory.create_user_memories, message=user_message_str, user_id=user_id)
+                )
+
+            # Update the session summary if needed
+            if self.enable_session_summaries:
+                futures.append(
+                    executor.submit(self.memory.create_session_summary, session_id=session_id, user_id=user_id)  # type: ignore
+                )
+            # Wait for all operations to complete and handle any errors
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    log_warning(f"Error in memory/summary operation: {str(e)}")
 
     async def _amake_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
     ) -> None:
         self.memory = cast(Memory, self.memory)
+        tasks = []
+
         user_message_str = (
             run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
         )
         if self.enable_user_memories and user_message_str is not None and user_message_str:
-            await self.memory.acreate_user_memories(message=user_message_str, user_id=user_id)
+            tasks.append(self.memory.acreate_user_memories(message=user_message_str, user_id=user_id))
 
         # Update the session summary if needed
         if self.enable_session_summaries:
-            await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
+            tasks.append(self.memory.acreate_session_summary(session_id=session_id, user_id=user_id))  # type: ignore
+
+        # Execute all tasks concurrently and handle any errors
+        if tasks:
+            try:
+                await asyncio.gather(*tasks)
+            except Exception as e:
+                log_warning(f"Error in memory/summary operation: {str(e)}")
 
     def _get_response_format(self) -> Optional[Union[Dict, Type[BaseModel]]]:
         self.model = cast(Model, self.model)
@@ -4429,6 +4509,18 @@ class Team:
 
             additional_information.append(f"The current time is {datetime.now()}")
 
+        # 1.3.3 Add the current location
+        if self.add_location_to_instructions:
+            from agno.utils.location import get_location
+
+            location = get_location()
+            if location:
+                location_str = ", ".join(
+                    filter(None, [location.get("city"), location.get("region"), location.get("country")])
+                )
+                if location_str:
+                    additional_information.append(f"Your approximate location is: {location_str}.")
+
         if self.knowledge is not None and self.enable_agentic_knowledge_filters:
             valid_filters = getattr(self.knowledge, "valid_metadata_filters", None)
             if valid_filters:
@@ -4531,16 +4623,16 @@ class Team:
 
         # Then add memories to the system prompt
         if self.memory:
-            if isinstance(self.memory, Memory) and (self.add_memory_references):
+            if isinstance(self.memory, Memory) and self.add_memory_references:
                 if not user_id:
                     user_id = "default"
-                user_memories = self.memory.memories.get(user_id, {})  # type: ignore
+                user_memories = self.memory.get_user_memories(user_id=user_id)  # type: ignore
                 if user_memories and len(user_memories) > 0:
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
                     system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories.values():  # type: ignore
+                    for _memory in user_memories:  # type: ignore
                         system_message_content += f"\n- {_memory.memory}"
                     system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
@@ -4633,11 +4725,12 @@ class Team:
         *,
         session_id: str,
         user_id: Optional[str] = None,
-        message: Union[str, List, Dict, Message],
+        message: Optional[Union[str, List, Dict, Message]] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
         files: Optional[Sequence[File]] = None,
+        knowledge_filters: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> RunMessages:
         """This function returns a RunMessages object with the following attributes:
@@ -4663,7 +4756,7 @@ class Team:
             run_messages.messages.append(system_message)
 
         # 2. Add history to run_messages
-        if self.enable_team_history:
+        if self.enable_team_history or self.add_history_to_messages:
             from copy import deepcopy
 
             history = []
@@ -4688,7 +4781,15 @@ class Team:
                 run_messages.messages += history_copy
 
         # 3. Add user message to run_messages
-        user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files, **kwargs)
+        user_message = self._get_user_message(
+            message,
+            audio=audio,
+            images=images,
+            videos=videos,
+            files=files,
+            knowledge_filters=knowledge_filters,
+            **kwargs,
+        )
 
         # Add user message to run_messages
         if user_message is not None:
@@ -4699,13 +4800,47 @@ class Team:
 
     def _get_user_message(
         self,
-        message: Union[str, List, Dict, Message],
+        message: Optional[Union[str, List, Dict, Message]] = None,
         audio: Optional[Sequence[Audio]] = None,
         images: Optional[Sequence[Image]] = None,
         videos: Optional[Sequence[Video]] = None,
         files: Optional[Sequence[File]] = None,
+        knowledge_filters: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
+        # Get references from the knowledge base to use in the user message
+        references = None
+        self.run_response = cast(TeamRunResponse, self.run_response)
+        if self.add_references and message:
+            message_str: str
+            if isinstance(message, str):
+                message_str = message
+            elif callable(message):
+                message_str = message(agent=self)
+            else:
+                raise Exception("message must be a string or a callable when add_references is True")
+
+            try:
+                retrieval_timer = Timer()
+                retrieval_timer.start()
+                docs_from_knowledge = self.get_relevant_docs_from_knowledge(
+                    query=message_str, filters=knowledge_filters, **kwargs
+                )
+                if docs_from_knowledge is not None:
+                    references = MessageReferences(
+                        query=message_str, references=docs_from_knowledge, time=round(retrieval_timer.elapsed, 4)
+                    )
+                    # Add the references to the run_response
+                    if self.run_response.extra_data is None:
+                        self.run_response.extra_data = RunResponseExtraData()
+                    if self.run_response.extra_data.references is None:
+                        self.run_response.extra_data.references = []
+                    self.run_response.extra_data.references.append(references)
+                retrieval_timer.stop()
+                log_debug(f"Time to get references: {retrieval_timer.elapsed:.4f}s")
+            except Exception as e:
+                log_warning(f"Failed to get references: {e}")
+
         # Build user message if message is None, str or list
         user_message_content: str = ""
         if isinstance(message, str) or isinstance(message, list):
@@ -4722,6 +4857,17 @@ class Team:
                 else:
                     user_message_content = "\n".join(message)
 
+            # Add references to user message
+            if (
+                self.add_references
+                and references is not None
+                and references.references is not None
+                and len(references.references) > 0
+            ):
+                user_message_content += "\n\nUse the following references from the knowledge base if it helps:\n"
+                user_message_content += "<references>\n"
+                user_message_content += self._convert_documents_to_string(references.references) + "\n"
+                user_message_content += "</references>"
             # Add context to user message
             if self.add_context and self.context is not None:
                 user_message_content += "\n\n<context>\n"
@@ -4738,10 +4884,27 @@ class Team:
                 **kwargs,
             )
 
-        # 3.2 If message is provided as a Message, use it directly
+        # Build the default user message for the Agent
+        elif message is None:
+            # If we have any media, return a message with empty content
+            if images is not None or audio is not None or videos is not None or files is not None:
+                return Message(
+                    role="user",
+                    content="",
+                    images=images,
+                    audio=audio,
+                    videos=videos,
+                    files=files,
+                    **kwargs,
+                )
+            else:
+                # If the message is None, return None
+                return None
+
+        # If message is provided as a Message, use it directly
         elif isinstance(message, Message):
             return message
-        # 3.3 If message is provided as a dict, try to validate it as a Message
+        # If message is provided as a dict, try to validate it as a Message
         elif isinstance(message, dict):
             try:
                 return Message.model_validate(message)
@@ -4752,6 +4915,7 @@ class Team:
         """Format a message with the session state variables."""
         format_variables = ChainMap(
             self.session_state or {},
+            self.team_session_state or {},
             self.context or {},
             self.extra_data or {},
             {"user_id": user_id} if user_id is not None else {},
@@ -5001,16 +5165,12 @@ class Team:
         return set_shared_context
 
     def _update_team_session_state(self, member_agent: Union[Agent, "Team"]) -> None:
-        if isinstance(member_agent, Agent) and member_agent.team_session_state is not None:
-            if self.session_state is None:
-                self.session_state = member_agent.team_session_state
+        """Update team session state from either an Agent or nested Team member"""
+        if member_agent.team_session_state is not None:
+            if self.team_session_state is None:
+                self.team_session_state = member_agent.team_session_state
             else:
-                merge_dictionaries(self.session_state, member_agent.team_session_state)
-        elif isinstance(member_agent, Team) and member_agent.session_state is not None:
-            if self.session_state is None:
-                self.session_state = member_agent.session_state
-            else:
-                merge_dictionaries(self.session_state, member_agent.session_state)
+                merge_dictionaries(self.team_session_state, member_agent.team_session_state)
 
     def get_run_member_agents_function(
         self,
@@ -6147,6 +6307,20 @@ class Team:
                     # Update the current session_state
                     self.session_state = session_state_from_db
 
+            if "team_session_state" in session.session_data:
+                team_session_state_from_db = session.session_data.get("team_session_state")
+                if (
+                    team_session_state_from_db is not None
+                    and isinstance(team_session_state_from_db, dict)
+                    and len(team_session_state_from_db) > 0
+                ):
+                    # If the team_session_state is already set, merge the team_session_state from the database with the current team_session_state
+                    if self.team_session_state is not None and len(self.team_session_state) > 0:
+                        # This updates team_session_state_from_db
+                        merge_dictionaries(team_session_state_from_db, self.team_session_state)
+                    # Update the current team_session_state
+                    self.team_session_state = team_session_state_from_db
+
             # Get the session_metrics from the database
             if "session_metrics" in session.session_data:
                 session_metrics_from_db = session.session_data.get("session_metrics")
@@ -6553,7 +6727,7 @@ class Team:
 
     def get_relevant_docs_from_knowledge(
         self, query: str, num_documents: Optional[int] = None, filters: Optional[Dict[str, Any]] = None, **kwargs
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Optional[List[Union[Dict[str, Any], str]]]:
         """Return a list of references from the knowledge base"""
         from agno.document import Document
 
@@ -6586,7 +6760,7 @@ class Team:
                 return self.retriever(**retriever_kwargs)
             except Exception as e:
                 log_warning(f"Retriever failed: {e}")
-                return None
+                raise e
         try:
             if self.knowledge is None or self.knowledge.vector_db is None:
                 return None
@@ -6606,11 +6780,11 @@ class Team:
             return [doc.to_dict() for doc in relevant_docs]
         except Exception as e:
             log_warning(f"Error searching knowledge base: {e}")
-            return None
+            raise e
 
     async def aget_relevant_docs_from_knowledge(
         self, query: str, num_documents: Optional[int] = None, filters: Optional[Dict[str, Any]] = None, **kwargs
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Optional[List[Union[Dict[str, Any], str]]]:
         """Get relevant documents from knowledge base asynchronously."""
         from agno.document import Document
 
@@ -6644,7 +6818,7 @@ class Team:
                 return self.retriever(**retriever_kwargs)
             except Exception as e:
                 log_warning(f"Retriever failed: {e}")
-                return None
+                raise e
 
         try:
             if self.knowledge is None or self.knowledge.vector_db is None:
@@ -6665,9 +6839,9 @@ class Team:
             return [doc.to_dict() for doc in relevant_docs]
         except Exception as e:
             log_warning(f"Error searching knowledge base: {e}")
-            return None
+            raise e
 
-    def convert_documents_to_string(self, docs: List[Dict[str, Any]]) -> str:
+    def _convert_documents_to_string(self, docs: List[Union[Dict[str, Any], str]]) -> str:
         if docs is None or len(docs) == 0:
             return ""
 
@@ -6739,7 +6913,7 @@ class Team:
 
             if docs_from_knowledge is None:
                 return "No documents found"
-            return self.convert_documents_to_string(docs_from_knowledge)
+            return self._convert_documents_to_string(docs_from_knowledge)
 
         async def asearch_knowledge_base(query: str) -> str:
             """Use this function to search the knowledge base for information about a query asynchronously.
@@ -6768,7 +6942,7 @@ class Team:
 
             if docs_from_knowledge is None:
                 return "No documents found"
-            return self.convert_documents_to_string(docs_from_knowledge)
+            return self._convert_documents_to_string(docs_from_knowledge)
 
         if async_mode:
             return asearch_knowledge_base
@@ -6812,7 +6986,7 @@ class Team:
 
             if docs_from_knowledge is None:
                 return "No documents found"
-            return self.convert_documents_to_string(docs_from_knowledge)
+            return self._convert_documents_to_string(docs_from_knowledge)
 
         async def asearch_knowledge_base(query: str, filters: Optional[Dict[str, Any]] = None) -> str:
             """Use this function to search the knowledge base for information about a query asynchronously.
@@ -6844,7 +7018,7 @@ class Team:
 
             if docs_from_knowledge is None:
                 return "No documents found"
-            return self.convert_documents_to_string(docs_from_knowledge)
+            return self._convert_documents_to_string(docs_from_knowledge)
 
         if async_mode:
             return asearch_knowledge_base
@@ -6905,6 +7079,8 @@ class Team:
             session_data["session_name"] = self.session_name
         if self.session_state is not None and len(self.session_state) > 0:
             session_data["session_state"] = self.session_state
+        if self.team_session_state is not None and len(self.team_session_state) > 0:
+            session_data["team_session_state"] = self.team_session_state
         if self.session_metrics is not None:
             session_data["session_metrics"] = asdict(self.session_metrics) if self.session_metrics is not None else None
         if self.images is not None:
