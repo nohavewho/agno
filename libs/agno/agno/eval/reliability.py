@@ -115,7 +115,7 @@ class ReliabilityEval:
             status = Status("Running evaluation...", spinner="dots", speed=1.0, refresh_per_second=10)
             live_log.update(status)
 
-            actual_tool_calls = []
+            actual_tool_calls: list[dict[str, Any]] = []
             if self.agent_response is not None:
                 messages = self.agent_response.messages
             elif self.team_response is not None:
@@ -320,7 +320,7 @@ class ReliabilityEval:
             status = Status("Running evaluation...", spinner="dots", speed=1.0, refresh_per_second=10)
             live_log.update(status)
 
-            actual_tool_calls = []
+            actual_tool_calls: list[dict[str, Any]] = []
             if self.agent_response is not None:
                 messages = self.agent_response.messages
             elif self.team_response is not None:
@@ -331,15 +331,12 @@ class ReliabilityEval:
 
             for message in reversed(messages):  # type: ignore
                 if message.tool_calls:
-                    if actual_tool_calls is None:
-                        actual_tool_calls = message.tool_calls
-                    else:
-                        actual_tool_calls.append(message.tool_calls[0])  # type: ignore
+                    actual_tool_calls.append(message.tool_calls[0])  # type: ignore
 
             tool_call_evaluations: list[ToolCallEvaluation] = []
 
             # If expected_tool_calls is a list of function names, we check if the functions were called
-            if isinstance(self.expected_tool_calls[0], ExpectedToolCall):
+            if isinstance(self.expected_tool_calls[0], str):
                 called_expected_tools = set()
                 for tool_call in actual_tool_calls:
                     function_name = tool_call.get("function", {}).get("name")
