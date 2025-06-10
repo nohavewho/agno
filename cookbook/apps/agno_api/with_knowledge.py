@@ -1,10 +1,10 @@
 from agno.agent import Agent
 from agno.app.agno_api import AgnoAPI
 from agno.app.agno_api.interfaces.playground import Playground
-from agno.app.agno_api.managers.knowledge import Knowledge
+from agno.knowledge.knowledge import Knowledge
 from agno.document import Document
 from agno.document.local_document_store import LocalDocumentStore
-from agno.knowledge.knowledge_base import KnowledgeBase
+from agno.app.agno_api.managers.knowledge.knowledge import KnowledgeInterface
 from agno.models.openai import OpenAIChat
 from agno.vectordb.pgvector import PgVector
 
@@ -23,21 +23,21 @@ vector_store = PgVector(
 )
 
 # Create knowledge base
-knowledge_base = KnowledgeBase(
-    name="My Knowledge Base",
+knowledge = Knowledge(
+    name="My Knowledge Base", 
     description="A simple knowledge base",
     document_store=document_store,
 )
 
 # Add a document
-doc = Document(content="Hello worlds", name="greetings")
-doc_id = knowledge_base.add_document(doc)
+# doc = Document(content="Hello worlds", name="greetings")
+# doc_id = knowledge.add_document(doc)
 
 
 basic_agent = Agent(
     name="Basic Agent",
     model=OpenAIChat(id="gpt-4o"),
-    knowledge=knowledge_base,
+    knowledge=knowledge,
     add_datetime_to_instructions=True,
     markdown=True,
 )
@@ -52,7 +52,7 @@ agno_client = AgnoAPI(
     interfaces=[
         Playground(),
     ],
-    managers=[Knowledge(knowledge=knowledge_base)],
+    managers=[KnowledgeInterface(knowledge=knowledge)],
 )
 app = agno_client.get_app()
 

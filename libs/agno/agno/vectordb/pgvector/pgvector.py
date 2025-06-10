@@ -1043,6 +1043,20 @@ class PgVector(VectorDb):
             logger.error(f"Error deleting rows from table '{self.table.fullname}': {e}")
             sess.rollback()
             return False
+        
+    def delete_by_id(self, document_id: str) -> bool:
+        """
+        Delete a record from the table by its ID.
+        """
+        from sqlalchemy import delete
+
+        try:
+            with self.Session() as sess, sess.begin():
+                sess.execute(delete(self.table).where(self.table.c.name == document_id))
+        except Exception as e:
+            logger.error(f"Error deleting record from table '{self.table.fullname}': {e}")
+            sess.rollback()
+            return False
 
     def __deepcopy__(self, memo):
         """

@@ -79,7 +79,7 @@ from agno.utils.response import create_panel, create_paused_run_response_panel, 
 from agno.utils.safe_formatter import SafeFormatter
 from agno.utils.string import parse_response_model_str
 from agno.utils.timer import Timer
-
+from agno.knowledge.knowledge import Knowledge
 
 @dataclass(init=False)
 class Agent:
@@ -137,7 +137,7 @@ class Agent:
     num_history_runs: int = 3
 
     # --- Agent Knowledge ---
-    knowledge: Optional[AgentKnowledge] = None
+    knowledge: Optional[Union[AgentKnowledge, Knowledge]] = None
     # Enable RAG by adding references from AgentKnowledge to the user prompt.
     # Add knowledge_filters to the Agent class attributes
     knowledge_filters: Optional[Dict[str, Any]] = None
@@ -4767,7 +4767,7 @@ class Agent:
         # Use knowledge base search
         try:
             if self.knowledge is None or (
-                getattr(self.knowledge, "vector_db", None) is None
+                (getattr(self.knowledge, "vector_db", None) or getattr(self.knowledge, "vector_store", None)) is None
                 and getattr(self.knowledge, "retriever", None) is None
             ):
                 return None
@@ -4777,7 +4777,7 @@ class Agent:
 
             log_debug(f"Searching knowledge base with filters: {filters}")
             relevant_docs: List[Document] = self.knowledge.search(
-                query=query, num_documents=num_documents, filters=filters
+                query=query, num_documents=num_documents, filters=filters # num_results
             )
 
             if not relevant_docs or len(relevant_docs) == 0:

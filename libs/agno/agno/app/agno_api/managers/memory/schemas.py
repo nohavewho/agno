@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from agno.memory.db.schema import MemoryRow
+from agno.db.schemas.memory import MemoryRow
 from agno.memory.memory import UserMemory
 
 

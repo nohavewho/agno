@@ -67,8 +67,13 @@ EVAL_TABLE_SCHEMA = {}
 
 KNOWLEDGE_TABLE_SCHEMA = {
     "id": {"type": String, "primary_key": True, "nullable": False},
+    # "vector_id": {"type": String, "nullable": False},
     "name": {"type": String, "nullable": False},
     "description": {"type": String, "nullable": False},
+    "metadata": {"type": JSON, "nullable": True},
+    # "created_at": {"type": BigInteger, "nullable": False},
+    # "updated_at": {"type": BigInteger, "nullable": True},
+    # "access_count": {"type": BigInteger, "nullable": False, "default": 0} # TODO: Think how we want to add more metrics
 }
 
 
@@ -89,6 +94,7 @@ def get_table_schema_definition(table_type: str) -> dict[str, Any]:
         "user_memories": USER_MEMORY_TABLE_SCHEMA,
         "learnings": {},
         "eval_runs": {},
+        "knowledge_documents": KNOWLEDGE_TABLE_SCHEMA,
     }
 
     schema = schemas.get(table_type, {})

@@ -4,7 +4,8 @@ from uuid import uuid4
 
 from agno.db.base import BaseDb, SessionType
 from agno.db.postgres.schemas import get_table_schema_definition
-from agno.memory.db.schema import MemoryRow
+from agno.db.schemas.memory import MemoryRow
+from agno.db.schemas.knowledge import KnowledgeRow
 from agno.run.response import RunResponse
 from agno.run.team import TeamRunResponse
 from agno.run.workflow import BaseWorkflowRunResponseEvent
@@ -164,10 +165,8 @@ class PostgresDb(BaseDb):
             Table: SQLAlchemy Table object
         """
         try:
+            log_info(f"Creating table {db_schema}.{table_name} with schema: {table_type}")
             table_schema = get_table_schema_definition(table_type)
-
-            log_debug(f"Creating table {db_schema}.{table_name} with schema: {table_schema}")
-
             columns, indexes = [], []
             for col_name, col_config in table_schema.items():
                 column_args = [col_name, col_config["type"]()]
@@ -299,9 +298,11 @@ class PostgresDb(BaseDb):
         """
 
         if not self.table_exists(table_name=table_name, db_schema=db_schema):
+            log_info(f"Table {db_schema}.{table_name} does not exist, creating it")
             return self.create_table(table_name=table_name, table_type=table_type, db_schema=db_schema)
 
         if not self.is_valid_table(table_name=table_name, table_type=table_type, db_schema=db_schema):
+            log_warning(f"Table {db_schema}.{table_name} has an invalid schema")
             raise ValueError(f"Table {db_schema}.{table_name} has an invalid schema")
 
         try:
@@ -714,15 +715,73 @@ class PostgresDb(BaseDb):
             return False
 
     # -- Knowledge methods --
-
+    def get_knowledge_table(self) -> Table:
+        """Get or create the knowledge table."""
+        if not hasattr(self, "knowledge_table"):
+            if self.knowledge_table_name is None:
+                raise ValueError("Knowledge table was not provided on initialization")
+            log_info(f"Getting knowledge table: {self.knowledge_table_name}")
+            self.knowledge_table = self.get_or_create_table(
+                table_name=self.knowledge_table_name, table_type="knowledge_documents", db_schema=self.db_schema
+            )
+        return self.knowledge_table
+    
     def delete_knowledge_document(self, knowledge_id: str):
         return
 
     def get_knowledge_document(self, knowledge_id: str):
-        return
+        """Get a knowledge document from the database."""
+        try:
+            table = self.get_knowledge_table()
+            with self.Session() as sess, sess.begin():
+                stmt = select(table).where(table.c.id == knowledge_id)
+                result = sess.execute(stmt).fetchone()
+                return result
+        except Exception as e:
+            log_error(f"Exception getting knowledge document: {e}")
+            return None
 
     def get_knowledge_documents(self, knowledge_id: str):
         return
 
-    def upsert_knowledge_document(self, knowledge_id: str):
-        return
+    def upsert_knowledge_document(self, knowledge: KnowledgeRow) -> Optional[KnowledgeRow]:
+        """Upsert a knowledge document entry in the database.
+
+        Args:
+            knowledge (KnowledgeRow): The knowledge document to upsert.
+
+        Returns:
+            Optional[UserMemory]: The upserted user memory, or None if the operation fails.
+        """
+        try:
+            table = self.get_knowledge_table()
+
+            with self.Session() as sess, sess.begin():
+                if knowledge.id is None:
+                    knowledge.id = str(uuid4())
+
+                stmt = postgresql.insert(table).values(
+                    id=knowledge.id,
+                    name=knowledge.name,
+                    description=knowledge.description,
+                    metadata=knowledge.metadata,
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_=dict(
+                        id=knowledge.id,
+                        name=knowledge.name,
+                        description=knowledge.description,
+                        metadata=knowledge.metadata,
+                    ),
+                )
+                sess.execute(stmt)
+                sess.commit()
+
+            # TODO: we should be able to return here without hitting the DB again
+            return knowledge
+            # return self.get_knowledge_document(knowledge_id=knowledge.id, table=table)
+
+        except Exception as e:
+            log_error(f"Exception upserting knowledge document: {e}")
+            return None

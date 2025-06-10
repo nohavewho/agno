@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from agno.memory import MemoryManager, SessionSummarizer
-from agno.memory.db import MemoryRow
+from agno.db.schemas.memory import MemoryRow
 from agno.memory.memory import Memory
 from agno.models.message import Message
 from agno.models.openai.chat import OpenAIChat

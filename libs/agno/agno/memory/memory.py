@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from agno.db.base import BaseDb, SessionType
 from agno.media import AudioArtifact, ImageArtifact, VideoArtifact
-from agno.memory.db.schema import MemoryRow
+from agno.db.schemas.memory import MemoryRow
 from agno.memory.manager import MemoryManager
 from agno.models.base import Model
 from agno.models.message import Message
