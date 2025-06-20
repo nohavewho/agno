@@ -80,6 +80,8 @@ from agno.utils.response import (
     escape_markdown_tags,
     format_tool_calls,
     update_run_response_with_reasoning,
+    async_generator_wrapper,
+    generator_wrapper,
 )
 from agno.utils.safe_formatter import SafeFormatter
 from agno.utils.string import is_valid_uuid, parse_response_model_str, url_safe_string
@@ -872,7 +874,7 @@ class Team:
                     time.sleep(2**attempt)
             except (KeyboardInterrupt, RunCancelledException):
                 if stream and self.is_streamable:
-                    return self._generator_wrapper(
+                    return generator_wrapper(
                         create_team_run_response_cancelled_event(run_response, "Operation cancelled by user")
                     )
                 else:
@@ -889,14 +891,14 @@ class Team:
                 f"Failed after {num_attempts} attempts. Last error using {last_exception.model_name}({last_exception.model_id})"
             )
             if stream and self.is_streamable:
-                return self._generator_wrapper(
+                return generator_wrapper(
                     create_team_run_response_error_event(run_response, error=str(last_exception))
                 )
 
             raise last_exception
         else:
             if stream and self.is_streamable:
-                return self._generator_wrapper(
+                return generator_wrapper(
                     create_team_run_response_error_event(run_response, error=str(last_exception))
                 )
 
@@ -1275,7 +1277,7 @@ class Team:
                     await asyncio.sleep(2**attempt)
             except (KeyboardInterrupt, RunCancelledException):
                 if stream and self.is_streamable:
-                    return self._async_generator_wrapper(
+                    return async_generator_wrapper(
                         create_team_run_response_cancelled_event(run_response, "Operation cancelled by user")
                     )
                 else:
@@ -1292,14 +1294,14 @@ class Team:
                 f"Failed after {num_attempts} attempts. Last error using {last_exception.model_name}({last_exception.model_id})"
             )
             if stream and self.is_streamable:
-                return self._async_generator_wrapper(
+                return async_generator_wrapper(
                     create_team_run_response_error_event(run_response, error=str(last_exception))
                 )
 
             raise last_exception
         else:
             if stream and self.is_streamable:
-                return self._async_generator_wrapper(
+                return async_generator_wrapper(
                     create_team_run_response_error_event(run_response, error=str(last_exception))
                 )
 
