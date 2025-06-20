@@ -141,27 +141,6 @@ class Step:
             self._executor_type = "function"
 
     def execute(
-        self,
-        step_input: StepInput,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        stream: bool = False,
-        stream_intermediate_steps: bool = False,
-    ) -> Union[StepOutput, Iterator[WorkflowRunResponseEvent]]:
-        """Execute the step with StepInput, with optional streaming support"""
-        log_debug(f"Step Execute Start: {self.name}", center=True)
-
-        if stream:
-            return self._execute_step_stream(
-                step_input=step_input,
-                session_id=session_id,
-                user_id=user_id,
-                stream_intermediate_steps=stream_intermediate_steps,
-            )
-        else:
-            return self._execute_step(step_input=step_input, session_id=session_id, user_id=user_id)
-
-    def _execute_step(
         self, step_input: StepInput, session_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> StepOutput:
         """Execute the step with StepInput, returning final StepOutput (non-streaming)"""
@@ -225,7 +204,7 @@ class Step:
                     else:
                         raise e
 
-    def _execute_step_stream(
+    def execute_stream(
         self,
         step_input: StepInput,
         session_id: Optional[str] = None,
@@ -323,27 +302,6 @@ class Step:
                         raise e
 
     async def aexecute(
-        self,
-        step_input: StepInput,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        stream: bool = False,
-        stream_intermediate_steps: bool = False,
-    ) -> Union[StepOutput, AsyncIterator[WorkflowRunResponseEvent]]:
-        """Execute the step with StepInput, with optional streaming support"""
-        log_debug(f"Async Step Execute Start: {self.name}", center=True)
-
-        if stream:
-            return self._aexecute_step_stream(
-                step_input=step_input,
-                session_id=session_id,
-                user_id=user_id,
-                stream_intermediate_steps=stream_intermediate_steps,
-            )
-        else:
-            return await self._aexecute_step(step_input=step_input, session_id=session_id, user_id=user_id)
-
-    async def _aexecute_step(
         self, step_input: StepInput, session_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> StepOutput:
         """Execute the step with StepInput, returning final StepOutput (non-streaming)"""
@@ -408,7 +366,7 @@ class Step:
                     else:
                         raise e
 
-    async def _aexecute_step_stream(
+    async def aexecute_stream(
         self,
         step_input: StepInput,
         session_id: Optional[str] = None,

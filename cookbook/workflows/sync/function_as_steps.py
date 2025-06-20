@@ -4,7 +4,8 @@ from agno.storage.sqlite import SqliteStorage
 from agno.team import Team
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
-from agno.workflow.v2.step import Step
+from agno.utils.pprint import pprint_run_response
+from agno.workflow.v2.types import WorkflowExecutionInput
 from agno.workflow.v2.workflow import Workflow
 
 # Define agents
@@ -38,16 +39,38 @@ content_planner = Agent(
     ],
 )
 
-# Define steps
-research_step = Step(
-    name="Research Step",
-    team=research_team,
-)
 
-content_planning_step = Step(
-    name="Content Planning Step",
-    agent=content_planner,
-)
+def custom_execution_function(
+    workflow: Workflow, execution_input: WorkflowExecutionInput
+):
+    print(f"Executing workflow: {workflow.name}")
+
+    # Run the research team
+    run_response = research_team.run(execution_input.message)
+    research_content = run_response.content
+
+    # Create intelligent planning prompt
+    planning_prompt = f"""
+        STRATEGIC CONTENT PLANNING REQUEST:
+
+        Core Topic: {execution_input.message}
+
+        Research Results: {research_content[:500]}
+
+        Planning Requirements:
+        1. Create a comprehensive content strategy based on the research
+        2. Leverage the research findings effectively
+        3. Identify content formats and channels
+        4. Provide timeline and priority recommendations
+        5. Include engagement and distribution strategies
+
+        Please create a detailed, actionable content plan.
+    """
+    content_plan = content_planner.run(planning_prompt)
+
+    # Return the content plan
+    return content_plan.content
+
 
 # Create and use workflow
 if __name__ == "__main__":
@@ -59,13 +82,9 @@ if __name__ == "__main__":
             db_file="tmp/workflow_v2.db",
             mode="workflow_v2",
         ),
-        steps=[research_step, content_planning_step],
+        steps=custom_execution_function,
     )
-    print("=== Research Pipeline (Rich Display) ===")
-    try:
-        content_creation_workflow.print_response(
-            message="AI trends in 2024",
-            markdown=True,
-        )
-    except Exception as e:
-        print(f"Research workflow failed: {e}")
+    response = content_creation_workflow.run(
+        message="AI trends in 2024",
+    )
+    pprint_run_response(response, markdown=True)

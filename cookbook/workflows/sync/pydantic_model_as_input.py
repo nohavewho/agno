@@ -1,10 +1,4 @@
-"""
-This example shows a basic sequential pipeline of steps that run agents and teams.
-
-This shows how to stream the response from the pipeline.
-"""
-
-import asyncio
+from typing import List, Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
@@ -14,8 +8,19 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.workflow.v2.step import Step
 from agno.workflow.v2.workflow import Workflow
+from pydantic import BaseModel, Field
+
+
+class ResearchTopic(BaseModel):
+    """Structured research topic with specific requirements"""
+
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+    target_audience: str = Field(description="Who this research is for")
+    sources_required: int = Field(description="Number of sources needed", default=5)
+
 
 # Define agents
+
 hackernews_agent = Agent(
     name="Hackernews Agent",
     model=OpenAIChat(id="gpt-4o-mini"),
@@ -36,6 +41,7 @@ research_team = Team(
     members=[hackernews_agent, web_agent],
     instructions="Research tech topics from Hackernews and the web",
 )
+
 content_planner = Agent(
     name="Content Planner",
     model=OpenAIChat(id="gpt-4o"),
@@ -56,9 +62,8 @@ content_planning_step = Step(
     agent=content_planner,
 )
 
-
 # Create and use workflow
-async def main():
+if __name__ == "__main__":
     content_creation_workflow = Workflow(
         name="Content Creation Workflow",
         description="Automated content creation from blog posts to social media",
@@ -69,17 +74,20 @@ async def main():
         ),
         steps=[research_step, content_planning_step],
     )
-    print("=== Research Pipeline (Rich Display) ===")
-    try:
-        await content_creation_workflow.aprint_response(
-            message="AI agent frameworks 2025",
-            markdown=True,
-            stream=True,
-            stream_intermediate_steps=True,
-        )
-    except Exception as e:
-        print(f"Research workflow failed: {e}")
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    print("=== Example: Research with Structured Topic ===")
+    research_topic = ResearchTopic(
+        focus_areas=[
+            "Machine Learning",
+            "Natural Language Processing",
+            "Computer Vision",
+            "AI Ethics",
+        ],
+        target_audience="Tech professionals and business leaders",
+        sources_required=8,
+    )
+    content_creation_workflow.print_response(
+        message="AI trends in 2024",
+        message_data=research_topic,
+        markdown=True,
+    )
