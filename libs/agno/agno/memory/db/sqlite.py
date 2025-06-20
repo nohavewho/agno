@@ -21,7 +21,8 @@ except ImportError:
     raise ImportError("`sqlalchemy` not installed. Please install it with `pip install sqlalchemy`")
 
 from agno.memory.db.base import MemoryDb
-from agno.memory.db.schema import MemoryRow
+from agno.memory.db.schemas.memory import MemoryRow
+
 from agno.utils.log import log_debug, log_info, logger
 
 

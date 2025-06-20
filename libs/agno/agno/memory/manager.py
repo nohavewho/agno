@@ -4,7 +4,8 @@ from textwrap import dedent
 from typing import Any, Callable, Dict, List, Optional
 
 from agno.memory.db.base import MemoryDb
-from agno.memory.db.schema import MemoryRow
+from agno.memory.db.schemas.memory import MemoryRow
+
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.tools.function import Function

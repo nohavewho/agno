@@ -8,7 +8,8 @@ except ImportError:
     raise ImportError("`redis` not installed. Please install it using `pip install redis`")
 
 from agno.memory.db.base import MemoryDb
-from agno.memory.db.schema import MemoryRow
+from agno.memory.db.schemas.memory import MemoryRow
+
 from agno.utils.log import log_debug, log_info, logger
 
 
