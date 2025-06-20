@@ -31,9 +31,13 @@ def custom_execution_function(
 ):
     print(f"Executing workflow: {workflow.name}")
 
-    # Run the research team
-    run_response = hackernews_agent.run(execution_input.message)
-    research_content = run_response.content
+    # Run the Hackernews agent to gather research content
+    research_content = ""
+    for response in hackernews_agent.run(
+        execution_input.message, stream=True, stream_intermediate_steps=True
+    ):
+        if hasattr(response, "content") and response.content:
+            research_content += str(response.content)
 
     # Create intelligent planning prompt
     planning_prompt = f"""
@@ -69,9 +73,8 @@ if __name__ == "__main__":
         ),
         steps=custom_execution_function,
     )
-    response = content_creation_workflow.run(
+    response = content_creation_workflow.print_response(
         message="AI trends in 2024",
         stream=True,
         stream_intermediate_steps=True,
     )
-    pprint_run_response(response, markdown=True)

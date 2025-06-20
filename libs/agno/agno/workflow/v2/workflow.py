@@ -113,32 +113,33 @@ class Workflow:
 
         self._update_workflow_session_state()
 
-        # Initialize steps
-        for step in self.steps:
-            # TODO: Handle properly steps inside other primitives
-            if isinstance(step, Step):
-                active_executor = step.active_executor
+        # Initialize steps - only if steps is iterable (not callable)
+        if self.steps and not isinstance(self.steps, Callable):
+            for step in self.steps:
+                # TODO: Handle properly steps inside other primitives
+                if isinstance(step, Step):
+                    active_executor = step.active_executor
 
-                if hasattr(active_executor, "workflow_session_id"):
-                    active_executor.workflow_session_id = self.session_id
-                if hasattr(active_executor, "workflow_id"):
-                    active_executor.workflow_id = self.workflow_id
+                    if hasattr(active_executor, "workflow_session_id"):
+                        active_executor.workflow_session_id = self.session_id
+                    if hasattr(active_executor, "workflow_id"):
+                        active_executor.workflow_id = self.workflow_id
 
-                if self.workflow_session_state is not None:
-                    # Initialize session_state if it doesn't exist
-                    if hasattr(active_executor, "workflow_session_state"):
-                        if active_executor.workflow_session_state is None:
-                            active_executor.workflow_session_state = {}
-
-                # If it's a team, update all members
-                if hasattr(active_executor, "members"):
-                    for member in active_executor.members:
-                        member.workflow_session_id = self.session_id
-                        member.workflow_id = self.workflow_id
-
+                    if self.workflow_session_state is not None:
                         # Initialize session_state if it doesn't exist
-                        if member.workflow_session_state is None:
-                            member.workflow_session_state = {}
+                        if hasattr(active_executor, "workflow_session_state"):
+                            if active_executor.workflow_session_state is None:
+                                active_executor.workflow_session_state = {}
+
+                    # If it's a team, update all members
+                    if hasattr(active_executor, "members"):
+                        for member in active_executor.members:
+                            member.workflow_session_id = self.session_id
+                            member.workflow_id = self.workflow_id
+
+                            # Initialize session_state if it doesn't exist
+                            if member.workflow_session_state is None:
+                                member.workflow_session_state = {}
 
     def _set_debug(self) -> None:
         """Set debug mode and configure logging"""
@@ -146,23 +147,33 @@ class Workflow:
             self.debug_mode = True
             set_log_level_to_debug()
 
-            # Propagate to steps
-            for step in self.steps:
-                # TODO: Handle properly steps inside other primitives
+            # Propagate to steps - only if steps is iterable (not callable)
+            if self.steps and not isinstance(self.steps, Callable):
+                for step in self.steps:
+                    # TODO: Handle properly steps inside other primitives
 
-                # Propagate to step executors (agents/teams)
-                if hasattr(step, "active_executor") and step.active_executor:  # Fixed: removed underscore
-                    executor = step.active_executor
-                    if hasattr(executor, "debug_mode"):
-                        executor.debug_mode = True
+                    # Propagate to step executors (agents/teams)
+                    if hasattr(step, "active_executor") and step.active_executor:  # Fixed: removed underscore
+                        executor = step.active_executor
+                        if hasattr(executor, "debug_mode"):
+                            executor.debug_mode = True
 
-                    # If it's a team, propagate to all members
-                    if hasattr(executor, "members"):
-                        for member in executor.members:
-                            if hasattr(member, "debug_mode"):
-                                member.debug_mode = True
+                        # If it's a team, propagate to all members
+                        if hasattr(executor, "members"):
+                            for member in executor.members:
+                                if hasattr(member, "debug_mode"):
+                                    member.debug_mode = True
         else:
             set_log_level_to_info()
+
+    def _get_step_count(self) -> int:
+        """Get the number of steps in the workflow"""
+        if self.steps is None:
+            return 0
+        elif isinstance(self.steps, Callable):
+            return 1  # Callable function counts as 1 step
+        else:
+            return len(self.steps)
 
     def _execute(
         self, execution_input: WorkflowExecutionInput, workflow_run_response: WorkflowRunResponse
@@ -201,7 +212,7 @@ class Workflow:
                 previous_step_content = None
 
                 for i, step in enumerate(self.steps):
-                    log_debug(f"Executing step {i + 1}/{len(self.steps)}: {step.name}")
+                    log_debug(f"Executing step {i + 1}/{self._get_step_count()}: {step.name}")
                     step_input = StepInput(
                         message=execution_input.message,
                         message_data=execution_input.message_data,
@@ -294,7 +305,7 @@ class Workflow:
                 previous_step_content = None
 
                 for i, step in enumerate(self.steps):
-                    log_debug(f"Streaming step {i + 1}/{len(self.steps)}: {step.name}")
+                    log_debug(f"Streaming step {i + 1}/{self._get_step_count()}: {step.name}")
 
                     # Create StepInput for this step
                     step_input = StepInput(
@@ -421,7 +432,7 @@ class Workflow:
                 previous_step_content = None
 
                 for i, step in enumerate(self.steps):
-                    log_debug(f"Executing step {i + 1}/{len(self.steps)}: {step.name}")
+                    log_debug(f"Executing step {i + 1}/{self._get_step_count()}: {step.name}")
                     step_input = StepInput(
                         message=execution_input.message,
                         message_data=execution_input.message_data,
@@ -522,7 +533,7 @@ class Workflow:
                 previous_step_content = None
 
                 for i, step in enumerate(self.steps):
-                    log_debug(f"Streaming step {i + 1}/{len(self.steps)}: {step.name}")
+                    log_debug(f"Streaming step {i + 1}/{self._get_step_count()}: {step.name}")
 
                     # Create StepInput for this step
                     step_input = StepInput(
@@ -665,7 +676,7 @@ class Workflow:
 
         log_debug(f"Workflow Run Start: {self.name}", center=True)
         log_debug(f"Stream: {stream}")
-        log_debug(f"Total steps: {len(self.steps)}")
+        log_debug(f"Total steps: {self._get_step_count()}")
 
         if user_id is not None:
             self.user_id = user_id
@@ -804,13 +815,20 @@ class Workflow:
         """Get a WorkflowSessionV2 object for storage"""
         workflow_data = {}
         # TODO: Handle recursive
-        if self.steps:
+        if self.steps and not isinstance(self.steps, Callable):
             workflow_data["steps"] = [
                 {
                     "name": step.name,
                     "description": step.description,
                 }
                 for step in self.steps
+            ]
+        elif isinstance(self.steps, Callable):
+            workflow_data["steps"] = [
+                {
+                    "name": "Custom Function",
+                    "description": "User-defined callable workflow",
+                }
             ]
 
         return WorkflowSessionV2(
@@ -998,7 +1016,7 @@ class Workflow:
         workflow_info = f"""**Workflow:** {self.name}"""
         if self.description:
             workflow_info += f"""\n\n**Description:** {self.description}"""
-        workflow_info += f"""\n\n**Steps:** {len(self.steps)} steps"""
+        workflow_info += f"""\n\n**Steps:** {self._get_step_count()} steps"""
         if message:
             workflow_info += f"""\n\n**Message:** {message}"""
         if message_data:
@@ -1046,7 +1064,6 @@ class Workflow:
 
                 response_timer.stop()
 
-                # Show individual step responses if available
                 if show_step_details and workflow_response.step_responses:
                     for i, step_output in enumerate(workflow_response.step_responses):
                         if step_output.content:
@@ -1056,6 +1073,15 @@ class Workflow:
                                 border_style="green",
                             )
                             console.print(step_panel)
+
+                # For callable functions, show the content directly since there are no step_responses
+                elif show_step_details and isinstance(self.steps, Callable) and workflow_response.content:
+                    step_panel = create_panel(
+                        content=Markdown(workflow_response.content) if markdown else workflow_response.content,
+                        title="Custom Function (Completed)",
+                        border_style="green",
+                    )
+                    console.print(step_panel)
 
                 # Show final summary
                 if workflow_response.extra_data:
@@ -1127,7 +1153,7 @@ class Workflow:
         workflow_info = f"""**Workflow:** {self.name}"""
         if self.description:
             workflow_info += f"""\n\n**Description:** {self.description}"""
-        workflow_info += f"""\n\n**Steps:** {len(self.steps)} steps"""
+        workflow_info += f"""\n\n**Steps:** {self._get_step_count()} steps"""
         if message:
             workflow_info += f"""\n\n**Message:** {message}"""
         if message_data:
@@ -1163,6 +1189,7 @@ class Workflow:
         current_step_index = 0
         step_responses = []
         step_started_printed = False
+        is_callable_function = isinstance(self.steps, Callable)
 
         with Live(console=console, refresh_per_second=10) as live_log:
             status = Status("Starting workflow...", spinner="dots")
@@ -1183,6 +1210,9 @@ class Workflow:
                     # Handle the new event types
                     if isinstance(response, WorkflowStartedEvent):
                         status.update("Workflow started...")
+                        if is_callable_function:
+                            current_step_name = "Custom Function"
+                            current_step_index = 0
                         live_log.update(status)
 
                     elif isinstance(response, StepStartedEvent):
@@ -1223,6 +1253,22 @@ class Workflow:
 
                     elif isinstance(response, WorkflowCompletedEvent):
                         status.update("Workflow completed!")
+
+                        # For callable functions, print the final content block here since there are no step events
+                        if (
+                            is_callable_function
+                            and show_step_details
+                            and current_step_content
+                            and not step_started_printed
+                        ):
+                            final_step_panel = create_panel(
+                                content=Markdown(current_step_content) if markdown else current_step_content,
+                                title="Custom Function (Completed)",
+                                border_style="green",
+                            )
+                            console.print(final_step_panel)
+                            step_started_printed = True
+
                         live_log.update(status, refresh=True)
 
                         # Show final summary
@@ -1262,10 +1308,15 @@ class Workflow:
 
                             # Live update the step panel with streaming content
                             if show_step_details and not step_started_printed:
+                                # For callable functions, show different title during streaming
+                                title = f"Step {current_step_index + 1}: {current_step_name} (Streaming...)"
+                                if is_callable_function:
+                                    title = "Custom Function (Streaming...)"
+
                                 # Show the streaming content live in green panel
                                 live_step_panel = create_panel(
                                     content=Markdown(current_step_content) if markdown else current_step_content,
-                                    title=f"Step {current_step_index + 1}: {current_step_name} (Streaming...)",
+                                    title=title,
                                     border_style="green",
                                 )
 
@@ -1388,7 +1439,7 @@ class Workflow:
         workflow_info = f"""**Workflow:** {self.name}"""
         if self.description:
             workflow_info += f"""\n\n**Description:** {self.description}"""
-        workflow_info += f"""\n\n**Steps:** {len(self.steps)} steps"""
+        workflow_info += f"""\n\n**Steps:** {self._get_step_count()} steps"""
         if message:
             workflow_info += f"""\n\n**Message:** {message}"""
         if message_data:
@@ -1446,6 +1497,15 @@ class Workflow:
                                 border_style="green",
                             )
                             console.print(step_panel)
+
+                # For callable functions, show the content directly since there are no step_responses
+                elif show_step_details and isinstance(self.steps, Callable) and workflow_response.content:
+                    step_panel = create_panel(
+                        content=Markdown(workflow_response.content) if markdown else workflow_response.content,
+                        title="Custom Function (Completed)",
+                        border_style="green",
+                    )
+                    console.print(step_panel)
 
                 # Show final summary
                 if workflow_response.extra_data:
@@ -1514,7 +1574,7 @@ class Workflow:
         workflow_info = f"""**Workflow:** {self.name}"""
         if self.description:
             workflow_info += f"""\n\n**Description:** {self.description}"""
-        workflow_info += f"""\n\n**Steps:** {len(self.steps)} steps"""
+        workflow_info += f"""\n\n**Steps:** {self._get_step_count()} steps"""
         if message:
             workflow_info += f"""\n\n**Message:** {message}"""
         if message_data:
@@ -1550,6 +1610,7 @@ class Workflow:
         current_step_index = 0
         step_responses = []
         step_started_printed = False
+        is_callable_function = isinstance(self.steps, Callable)
 
         with Live(console=console, refresh_per_second=10) as live_log:
             status = Status("Starting async workflow...", spinner="dots")
@@ -1570,6 +1631,9 @@ class Workflow:
                     # Handle the new event types
                     if isinstance(response, WorkflowStartedEvent):
                         status.update("Workflow started...")
+                        if is_callable_function:
+                            current_step_name = "Custom Function"
+                            current_step_index = 0
                         live_log.update(status)
 
                     elif isinstance(response, StepStartedEvent):
@@ -1610,6 +1674,22 @@ class Workflow:
 
                     elif isinstance(response, WorkflowCompletedEvent):
                         status.update("Workflow completed!")
+
+                        # For callable functions, print the final content block here since there are no step events
+                        if (
+                            is_callable_function
+                            and show_step_details
+                            and current_step_content
+                            and not step_started_printed
+                        ):
+                            final_step_panel = create_panel(
+                                content=Markdown(current_step_content) if markdown else current_step_content,
+                                title="Custom Function (Completed)",
+                                border_style="green",
+                            )
+                            console.print(final_step_panel)
+                            step_started_printed = True
+
                         live_log.update(status, refresh=True)
 
                         # Show final summary
@@ -1649,10 +1729,15 @@ class Workflow:
 
                             # Live update the step panel with streaming content
                             if show_step_details and not step_started_printed:
+                                # For callable functions, show different title during streaming
+                                title = f"Step {current_step_index + 1}: {current_step_name} (Streaming...)"
+                                if is_callable_function:
+                                    title = "Custom Function (Streaming...)"
+
                                 # Show the streaming content live in green panel
                                 live_step_panel = create_panel(
                                     content=Markdown(current_step_content) if markdown else current_step_content,
-                                    title=f"Step {current_step_index + 1}: {current_step_name} (Streaming...)",
+                                    title=title,
                                     border_style="green",
                                 )
 
