@@ -8,6 +8,9 @@ from agno.media import Image, ImageArtifact, Video, VideoArtifact
 from agno.run.response import RunResponse
 from agno.run.team import TeamRunResponse
 from agno.run.v2.workflow import (
+    StepCompletedEvent,
+    StepStartedEvent,
+    WorkflowRunResponse,
     WorkflowRunResponseEvent,
 )
 from agno.team import Team
@@ -210,8 +213,21 @@ class Step:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         stream_intermediate_steps: bool = False,
+        workflow_run_response: Optional["WorkflowRunResponse"] = None,
+        step_index: Optional[int] = None,
     ) -> Iterator[Union[WorkflowRunResponseEvent, StepOutput]]:
         """Execute the step with event-driven streaming support"""
+
+        # Emit StepStartedEvent
+        yield StepStartedEvent(
+            run_id=workflow_run_response.run_id or "",
+            workflow_name=workflow_run_response.workflow_name or "",
+            workflow_id=workflow_run_response.workflow_id or "",
+            session_id=workflow_run_response.session_id or "",
+            step_name=self.name,
+            step_index=step_index,
+        )
+
         # Execute with retries and streaming
         for attempt in range(self.max_retries + 1):
             try:
@@ -282,6 +298,19 @@ class Step:
                     log_debug(f"Created empty StepOutput as fallback")
 
                 logger.info(f"Step {self.name} completed successfully with streaming")
+
+                # Emit StepCompletedEvent
+                yield StepCompletedEvent(
+                    run_id=workflow_run_response.run_id or "",
+                    workflow_name=workflow_run_response.workflow_name or "",
+                    workflow_id=workflow_run_response.workflow_id or "",
+                    session_id=workflow_run_response.session_id or "",
+                    step_name=self.name,
+                    step_index=step_index,
+                    content=final_response.content,
+                    step_response=final_response,
+                )
+
                 yield final_response
                 return
 
@@ -372,8 +401,20 @@ class Step:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         stream_intermediate_steps: bool = False,
+        workflow_run_response: Optional["WorkflowRunResponse"] = None,
+        step_index: Optional[int] = None,
     ) -> AsyncIterator[Union[WorkflowRunResponseEvent, StepOutput]]:
         """Execute the step with event-driven streaming support"""
+        # Emit StepStartedEvent
+        yield StepStartedEvent(
+            run_id=workflow_run_response.run_id or "",
+            workflow_name=workflow_run_response.workflow_name or "",
+            workflow_id=workflow_run_response.workflow_id or "",
+            session_id=workflow_run_response.session_id or "",
+            step_name=self.name,
+            step_index=step_index,
+        )
+
         # Execute with retries and streaming
         for attempt in range(self.max_retries + 1):
             try:
@@ -447,6 +488,19 @@ class Step:
                     final_response = StepOutput(content="")
 
                 logger.info(f"Step {self.name} completed successfully with streaming")
+                # Emit StepCompletedEvent
+                # if workflow_run_response:
+                yield StepCompletedEvent(
+                    run_id=workflow_run_response.run_id or "",
+                    workflow_name=workflow_run_response.workflow_name or "",
+                    workflow_id=workflow_run_response.workflow_id or "",
+                    session_id=workflow_run_response.session_id or "",
+                    step_name=self.name,
+                    step_index=step_index,
+                    content=final_response.content,
+                    step_response=final_response,
+                )
+
                 yield final_response
                 return
 

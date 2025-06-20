@@ -5,9 +5,9 @@ from agno.models.openai import OpenAIChat
 from agno.storage.sqlite import SqliteStorage
 from agno.tools.models.gemini import GeminiTools
 from agno.tools.openai import OpenAITools
-from agno.workflow.v2.steps import Steps
 from agno.workflow.v2.condition import Condition
 from agno.workflow.v2.step import Step
+from agno.workflow.v2.steps import Steps
 from agno.workflow.v2.types import StepInput
 from agno.workflow.v2.workflow import Workflow
 from pydantic import BaseModel
@@ -115,9 +115,7 @@ video_sequence = Steps(
 )
 
 
-def media_sequence_selector(
-    step_input: StepInput, steps: List[Steps], **kwargs
-) -> str:
+def media_sequence_selector(step_input: StepInput, steps: List[Steps], **kwargs) -> str:
     """
     Smart pipeline selector based on message_data fields.
 
@@ -157,8 +155,12 @@ if __name__ == "__main__":
             db_file="tmp/media_workflow_data_v2.db",
             mode="workflow_v2",
         ),
-        steps=[Condition(evaluator=media_sequence_selector, steps=[image_sequence, video_sequence])],
-
+        steps=[
+            Condition(
+                evaluator=media_sequence_selector,
+                steps=[image_sequence, video_sequence],
+            )
+        ],
     )
 
     print("=== Example 1: Image Generation (using message_data) ===")

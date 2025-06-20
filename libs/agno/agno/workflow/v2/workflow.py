@@ -1,10 +1,10 @@
+import inspect
 from dataclasses import dataclass
 from datetime import datetime
 from os import getenv
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Literal, Optional, Union, overload
 from uuid import uuid4
 
-import inspect
 from pydantic import BaseModel
 
 from agno.media import Audio, Image, Video
@@ -20,26 +20,31 @@ from agno.run.v2.workflow import (
 from agno.storage.base import Storage
 from agno.storage.session.v2.workflow import WorkflowSession as WorkflowSessionV2
 from agno.utils.log import log_debug, logger, set_log_level_to_debug, set_log_level_to_info
+from agno.workflow.v2.condition import Condition
 from agno.workflow.v2.loop import Loop
 from agno.workflow.v2.parallel import Parallel
 from agno.workflow.v2.step import Step
-from agno.workflow.v2.condition import Condition
 from agno.workflow.v2.steps import Steps
 from agno.workflow.v2.types import StepInput, StepOutput, WorkflowExecutionInput
 
 WorkflowSteps = Union[
-    Callable[["Workflow", WorkflowExecutionInput], Union[StepOutput, Awaitable[StepOutput], Iterator[StepOutput], AsyncIterator[StepOutput], Any]],
+    Callable[
+        ["Workflow", WorkflowExecutionInput],
+        Union[StepOutput, Awaitable[StepOutput], Iterator[StepOutput], AsyncIterator[StepOutput], Any],
+    ],
     Steps,
     List[
         Union[
-            Callable[[StepInput], Union[StepOutput, Awaitable[StepOutput], Iterator[StepOutput], AsyncIterator[StepOutput]]],
+            Callable[
+                [StepInput], Union[StepOutput, Awaitable[StepOutput], Iterator[StepOutput], AsyncIterator[StepOutput]]
+            ],
             Step,
             Steps,
             Loop,
             Parallel,
-            Condition
+            Condition,
         ]
-    ]
+    ],
 ]
 
 
@@ -195,17 +200,16 @@ class Workflow:
                 output_audio = []
                 previous_step_content = None
 
-
                 for i, step in enumerate(self.steps):
                     log_debug(f"Executing step {i + 1}/{len(self.steps)}: {step.name}")
                     step_input = StepInput(
-                                    message=execution_input.message,
-                                    message_data=execution_input.message_data,
-                                    previous_step_content=previous_step_content,
-                                    images=shared_images,
-                                    videos=shared_videos,
-                                    audio=shared_audio,
-                                )
+                        message=execution_input.message,
+                        message_data=execution_input.message_data,
+                        previous_step_content=previous_step_content,
+                        images=shared_images,
+                        videos=shared_videos,
+                        audio=shared_audio,
+                    )
 
                     # Execute the step (non-streaming)
                     step_output = step.execute(step_input, session_id=self.session_id, user_id=self.user_id)
@@ -220,7 +224,6 @@ class Workflow:
 
                     # Collect the StepOutput for storage
                     collected_step_outputs.append(step_output)
-
 
                 # Update the workflow_run_response with completion data
                 workflow_run_response.content = collected_step_outputs[
@@ -254,11 +257,11 @@ class Workflow:
 
         workflow_run_response.status = RunStatus.running
         yield WorkflowStartedEvent(
-                run_id=workflow_run_response.run_id or "",
-                workflow_name=workflow_run_response.workflow_name,
-                workflow_id=workflow_run_response.workflow_id,
-                session_id=workflow_run_response.session_id,
-            )
+            run_id=workflow_run_response.run_id or "",
+            workflow_name=workflow_run_response.workflow_name,
+            workflow_id=workflow_run_response.workflow_id,
+            session_id=workflow_run_response.session_id,
+        )
 
         if isinstance(self.steps, Callable):
             if inspect.iscoroutinefunction(self.steps) or inspect.isasyncgenfunction(self.steps):
@@ -290,7 +293,6 @@ class Workflow:
                 output_audio = []
                 previous_step_content = None
 
-
                 for i, step in enumerate(self.steps):
                     log_debug(f"Streaming step {i + 1}/{len(self.steps)}: {step.name}")
 
@@ -310,6 +312,8 @@ class Workflow:
                         session_id=self.session_id,
                         user_id=self.user_id,
                         stream_intermediate_steps=stream_intermediate_steps,
+                        workflow_run_response=workflow_run_response,
+                        step_index=i,
                     ):
                         if isinstance(event, StepOutput):
                             collected_step_outputs.append(event)
@@ -324,7 +328,6 @@ class Workflow:
                         else:
                             # Yield other internal events
                             yield event
-
 
                 # Update the workflow_run_response with completion data
                 workflow_run_response.content = collected_step_outputs[
@@ -417,17 +420,16 @@ class Workflow:
                 output_audio = []
                 previous_step_content = None
 
-
                 for i, step in enumerate(self.steps):
                     log_debug(f"Executing step {i + 1}/{len(self.steps)}: {step.name}")
                     step_input = StepInput(
-                                    message=execution_input.message,
-                                    message_data=execution_input.message_data,
-                                    previous_step_content=previous_step_content,
-                                    images=shared_images,
-                                    videos=shared_videos,
-                                    audio=shared_audio,
-                                )
+                        message=execution_input.message,
+                        message_data=execution_input.message_data,
+                        previous_step_content=previous_step_content,
+                        images=shared_images,
+                        videos=shared_videos,
+                        audio=shared_audio,
+                    )
 
                     # Execute the step (non-streaming)
                     step_output = await step.aexecute(step_input, session_id=self.session_id, user_id=self.user_id)
@@ -442,7 +444,6 @@ class Workflow:
 
                     # Collect the StepOutput for storage
                     collected_step_outputs.append(step_output)
-
 
                 # Update the workflow_run_response with completion data
                 workflow_run_response.content = collected_step_outputs[
@@ -520,7 +521,6 @@ class Workflow:
                 output_audio = []
                 previous_step_content = None
 
-
                 for i, step in enumerate(self.steps):
                     log_debug(f"Streaming step {i + 1}/{len(self.steps)}: {step.name}")
 
@@ -535,11 +535,13 @@ class Workflow:
                     )
 
                     # Execute step with streaming and yield all events
-                    async for event in await step.aexecute_stream(
+                    async for event in step.aexecute_stream(
                         step_input,
                         session_id=self.session_id,
                         user_id=self.user_id,
                         stream_intermediate_steps=stream_intermediate_steps,
+                        workflow_run_response=workflow_run_response,
+                        step_index=i,
                     ):
                         if isinstance(event, StepOutput):
                             collected_step_outputs.append(event)
@@ -554,7 +556,6 @@ class Workflow:
                         else:
                             # Yield other internal events
                             yield event
-
 
                 # Update the workflow_run_response with completion data
                 workflow_run_response.content = collected_step_outputs[
@@ -797,9 +798,7 @@ class Workflow:
                 stream_intermediate_steps=stream_intermediate_steps,
             )
         else:
-            return await self._aexecute(
-                execution_input=inputs, workflow_run_response=workflow_run_response
-            )
+            return await self._aexecute(execution_input=inputs, workflow_run_response=workflow_run_response)
 
     def get_workflow_session(self) -> WorkflowSessionV2:
         """Get a WorkflowSessionV2 object for storage"""
